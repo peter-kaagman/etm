@@ -33,3 +33,8 @@ inc/
 /MANIFEST.bak
 /pm_to_blib
 /*.zip
+
+# Dancer2
+cpanfile
+cpanfile.snapshot
+config.yml
