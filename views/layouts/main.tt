@@ -12,6 +12,8 @@
 <script type="text/javascript">/* <![CDATA[ */
     !window.jQuery && document.write('<script type="text/javascript" src="<% request.uri_base %>/javascripts/jquery.js"><\/script>')
 /* ]]> */</script>
+<script type="text/javascript" src="<% request.uri_base %>/javascripts/home.js"></script>
+
 
 </head>
 <body>
