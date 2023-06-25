@@ -40,3 +40,4 @@ cpanfile.snapshot
 config.yml
 .dancer
 sessions/
+*.swp
