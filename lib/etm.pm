@@ -1,27 +1,37 @@
 package etm;
+use feature ":5.10";
 use Dancer2;
 use Dancer2::Plugin::Auth::OAuth;
 use Data::Dumper;
 use LWP::UserAgent;
 use JSON;
-
+use JSON::Create 'create_json';
 our $VERSION = '0.1';
 
 get '/' => sub { # {{{1
   my $sessionData = session->read('oauth');
-  print Dumper $$sessionData{'azuread'};
-  print "\n\n". $$sessionData{azuread}{'user_info'}{'givenName'}. "\n\n";
-  print "\n\n". $$sessionData{azuread}{'access_token'}. "\n\n";
-  #my $joinedTeams = &getJoinedTeams($sessionData);
-  #print Dumper $joinedTeams;
-  my $session_data = session->read('oauth');
-  my $teams = getJoinedTeams($$sessionData{azuread}{access_token});
+  #my $teams = getJoinedTeams($$sessionData{azuread}{access_token});
+  my $teams = session->read('teams');
   template 'index' => { 'title' => 'ETM',
 	                'sessionData' => $sessionData, 
 			'joinedTeams' => $teams,
 			};
 };# }}}
 
+post '/api/sendmessage' => sub { # {{{1
+  my $data = from_json(request->body);
+
+  # Bereid een JSON object voor met content
+  my %content;
+  $content{'body'}{'content'} = $$data{'message'};
+  print create_json(\%content);
+
+}; #}}}
+
+get '/api/reloadteams' => sub { # {{{1
+  session->delete('teams');
+  return redirect "/";
+}; #}}}
 sub _doGetJoinedTeams { # {{{1
 	my $token = shift;
 	my $url = shift;
@@ -42,17 +52,47 @@ sub _doGetJoinedTeams { # {{{1
 	}
 } #	}}}
 
-sub getJoinedTeams {
+sub getJoinedTeams { # {{{1
   my $token = shift;
   my @teams;
   my $url = "http://graph.microsoft.com/v1.0/me/joinedTeams";
   _doGetJoinedTeams($token, $url, \@teams);
-  print Dumper \@teams;
-  return \@teams;
+  #print Dumper \@teams;
+  #return \@teams;
+  my %teamsData;
+  foreach(@teams){
+	$teamsData{teams}{$$_{id}}{displayName} = $$_{displayName};
+	$teamsData{teams}{$$_{id}}{description} = $$_{description};
+
+	# Team staat in de hash, mooi moment om aanvullende
+	# gegevens over het team te zoeken
+	getTeamChannels($token, %teamData{teams}{id});
+  }
+  session->write(%teamsData);
+}# }}}
+
+sub getTeamChannels {
+  my $token = shift;
+  my $teamID = shift;
 }
 
-hook before => sub {
+sub loadTeams { #{{{1
+    my $teams_data = session->read('teams');
     my $session_data = session->read('oauth');
+    my $provider = 'azuread';
+    # Laad teamsdata als er een oauth sessie is
+    # en geen teams
+    if ( 
+         (!defined $teams_data) &&
+	 (defined $session_data->{$provider}{id_token})
+	){
+  		#print "\nLoading teams\n\n";
+  		getJoinedTeams($$session_data{azuread}{access_token});
+     }
+}#}}}
+
+hook before => sub {# {{{1
+    my $session_data = session->read('oauth');#{{{2
     my $provider = "azuread"; # Lower case of the authentication plugin used
  
     my $now = DateTime->now->epoch;
@@ -70,25 +110,34 @@ hook before => sub {
 	    $session_data->{$provider}{expires} < $now && request->path !~ m{^/auth}
     ) {
       return forward "/auth/$provider/refresh";
-    }
-};
+    }# }}}
+
+    loadTeams();
+
+
+};# }}}
+
 sub _callAPI { # {{{1
 	my $token = shift;
 	my $url = shift;
 	my $verb = shift;
+	my $content = shift || undef;
 	my $ua = LWP::UserAgent->new(
 		'send_te' => '0',
 	);
-	my $r  = HTTP::Request->new(
-	$verb => $url,
-		[
-		'Accept'        => '*/*',
-		'Authorization' => "Bearer ".$token,
-		'User-Agent'    => 'curl/7.55.1',
-		'Content-Type'  => 'application/json'
-		],
-	);	
-	my $result = $ua->request($r);
+	my $req = HTTP::Request->new();
+	$req->method($verb);
+	$req->uri($url);
+	$req->header('Accept' => '*/*');
+	$req->header('Accept'        => '*/*',            );
+	$req->header('Authorization' => "Bearer ".$token, );
+	$req->header('User-Agent'    => 'curl/7.55.1',    );
+	$req->header('Content-Type'  => 'application/json');
+	if (defined $content){
+	  $req->content($content)
+	}
+	my $result = $ua->request($req);
+	#print Dumper $result;
 	return $result;
 } # }}}
 

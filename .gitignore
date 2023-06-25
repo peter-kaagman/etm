@@ -38,3 +38,5 @@ inc/
 cpanfile
 cpanfile.snapshot
 config.yml
+.dancer
+sessions/

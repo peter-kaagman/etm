@@ -4,6 +4,10 @@
   <h2>Hallo <% sessionData.azuread.user_info.userPrincipalName %></h2>
   </div>
 
+  <div class="pagePart" id="actionBar">
+    <input type="button" id="reloadTeams" value="Herlaad teams.">
+  </div>
+
   <div class="pagePart" id="teamList">
     <p>Ik zie dat je lid bent van de volgende teams.</p>
     <table>
@@ -12,11 +16,11 @@
       <th>Rol</th>
       <th>Message</th>
       </tr>
-      <% FOR team = joinedTeams%>
+      <% FOREACH key IN joinedTeams.keys.sort %>
         <tr>
-          <td><% team.displayName %></td>
+          <td><% joinedTeams.$key.displayName %></td>
         <td>ntb</td>
-        <td><input type="checkbox" id="<% team.id %>" name="<% team.id %>"></td>
+        <td><input type="checkbox" id="<% key %>" name="<% key %>"></td>
       </tr>
       <% END %>
     </table>
