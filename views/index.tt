@@ -9,6 +9,8 @@
   </div>
 
   <div class="pagePart" id="teamList">
+    <p>Loading teams.</p>
+    <!--
     <p>Ik zie dat je lid bent van de volgende teams.</p>
     <table>
       <tr>
@@ -24,6 +26,7 @@
       </tr>
       <% END %>
     </table>
+    -->
   </div>
   <div class="pagePart" id="sendForm">
     <form id="sendMessage">

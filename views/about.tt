@@ -1,0 +1,7 @@
+<div id="page">
+  <div class="pagePart" id="pageHeader">
+    <h1>WebSite: <% title %></h1>
+    <h2>About</h2>
+  </div>
+</div
+
