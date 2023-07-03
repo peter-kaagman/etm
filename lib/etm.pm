@@ -9,7 +9,7 @@ use JSON::Create 'create_json';
 our $VERSION = '0.1';
 
 get '/' => sub { # {{{1
-  if (validateLogin()){
+  if (validLogin()){
     say "Valid login";
     my $sessionData = session->read('oauth');
     my $teams = session->read('teams');
@@ -18,7 +18,7 @@ get '/' => sub { # {{{1
   			'joinedTeams' => $teams,
   			};
   }else{
-    say "inValid login";
+    say "inValid login /";
     redirect '/about';
   }
 };# }}}
@@ -31,18 +31,38 @@ get '/about' => sub { # {{{1
 	                'sessionData' => $sessionData, 
 			};
 };# }}}
+get '/teamdetail/:team_id' => sub { # {{{1
+  if (validLogin()){
+    my $team_id = route_parameters->get('team_id');
+    template 'teamdetail' => {
+      'title' => 'ETM Team Detail',
+      'team_id' => $team_id
+    }
+  }else{
+    say "inValid login /teamdetail";
+    redirect '/about';
+  }
+};# }}}
 post '/api/sendmessage' => sub { # {{{1
-  if (validateLogin()){
-    my $data = from_json(request->body);
-
+  if (validLogin()){
+    say "Send message";
+    my $session_data = session->read('oauth');
+    my $provider = 'azuread';
+    my $body = decode_json request->body;
+    my $channelId = $body->{id};
+    my $generalId = $body->{generalid};
+    my $url= "https//graph.microsoft.com/v.1.0/teams$channelId/channels$generalId/messages";
     # Bereid een JSON object voor met content
     my %content;
-    $content{'body'}{'content'} = $$data{'message'};
-    print create_json(\%content);
+    $content{body}{content} = $body->{message};
+    #print Dumper \%content;
+    my $content_json = encode_json \%content;
+    #print Dumper $content_json;
+    _callAPI($session_data->{$provider}{access_token},$url,'POST',$content_json);
   }
 }; #}}}
 get '/api/reloadteams' => sub { # {{{1
-  if (validateLogin()){
+  if (validLogin()){
     session->delete('teams');
     loadTeams();
     my $teams_data = session->read('teams');
@@ -113,13 +133,14 @@ sub loadTeams { #{{{1
   		getJoinedTeams($$session_data{azuread}{access_token});
      }
 }#}}}
-# sub validateLogin() {{{1
+# sub validLogin() {{{1
 # Controleert:
 # - of er een sessie
 # - of de sessie ververst moet worden
 # - of de ingelogde gebruiker de juiste rollen heeft
-sub validateLogin { 
-  say "validateLogin";
+sub validLogin { 
+  say "validLogin";
+  my $result = 0;
   my $session_data = session->read('oauth');
   my $provider = "azuread"; # Lower case of the authentication plugin used
  
@@ -145,7 +166,7 @@ sub validateLogin {
   #say  $$session_data{azuread}{login_info}{roles}[0];
   if (!defined $session_data->{$provider}{login_info}{roles}){
     say "geen roles";
-    return 0;
+    $result =  0;
   }
 
   if (
@@ -153,13 +174,14 @@ sub validateLogin {
        ( grep (/^Medewerkers$/, @{$session_data->{$provider}{login_info}{roles}}) )
      ){
     say "role etm en Medewerkers";
-    return 42;
+    $result = 42;
   }else{
     say "geen role etm en Medewerkers";
-    return 0;
+    $result = 0;
   }
+  return $result;
 }#}}}
-sub _callAPI { # {{{1
+sub _callAPI {# {{{1
 	my $token = shift;
 	my $url = shift;
 	my $verb = shift;
@@ -175,7 +197,9 @@ sub _callAPI { # {{{1
 	$req->header('User-Agent'    => 'curl/7.55.1',    );
 	$req->header('Content-Type'  => 'application/json');
 	if (defined $content){
-	  $req->content($content)
+	  say "in content";
+	  $req->content($content);
+	  print Dumper $req;
 	}
 	my $result = $ua->request($req);
 	#print Dumper $result;

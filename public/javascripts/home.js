@@ -4,14 +4,13 @@ document.addEventListener( 'DOMContentLoaded', function() {
 
   loadTeams();
 
-  let reloadTeams = document.querySelector('#reloadTeams');
+  let reloadTeams = document.querySelector('#reloadTeams'); //{{{1
   reloadTeams.addEventListener('click', function(event){
     event.preventDefault();
     loadTeams();
-    //fetch('/api/reloadteams');
-  });
+  });// }}}
 
-  let form = document.querySelector('#sendMessage');
+  let form = document.querySelector('#sendMessage');///{{{1
   form.addEventListener('submit', function(event){
     event.preventDefault();
     const data = new FormData(event.target);
@@ -20,16 +19,28 @@ document.addEventListener( 'DOMContentLoaded', function() {
       let teams = document.querySelectorAll('input:checked');
       if (teams.length > 0){
         Array.from(teams).forEach(function (team, index){
-	  console.log('Bericht: ' + message + ' => ' +  team.id);
+	  console.log('Bericht: ' + message + ' => ' +  team.id + ' => ' + team.name);
 	  fetch('/api/sendmessage',{
 	   method: 'POST',
+	   headers: {
+	     'Accept': 'application/json',
+	     'Content-Type': 'application/json'
+	   },
 	   body: JSON.stringify({
 	     id: team.id,
+	     generalid: team.name,
 	     message: message
-	   }),
-	   headers: {
-	     'Content-type': 'application/json; charset=UTF-8'
-	   }
+	   })
+	  })
+	  .then(function(response){
+	    return response.json();
+	  })
+	  .then(function(data){
+	    console.log(data)
+	  })
+	  .catch(function(err){
+            console.log('error');
+            console.warn('Some error: ', err);
 	  });
 	});
       }else{
@@ -38,22 +49,22 @@ document.addEventListener( 'DOMContentLoaded', function() {
     }else{
       console.log('Bericht is leeg');
     }
-  });
+  });//}}}
 
-  function loadTeams(){
+  function loadTeams(){//{{{1
     console.log('loadTeams');
     fetch('/api/reloadteams')
     .then(function(response){
       return response.json();
     })
-    .then(function(teamsObj){
+    .then(function(teamsObj){//{{{2
       const list = document.querySelector('#teamList');
       const table = document.createElement(`table`);
       const aRow = document.createElement(`tr`);
       const aCell = document.createElement(`td`);
       const aHead = document.createElement(`th`);
       
-      // Headers
+      // Headers{{{3
       const row = aRow.cloneNode();
       const cellNaam = aHead.cloneNode();
       cellNaam.textContent = 'Naam';
@@ -64,10 +75,11 @@ document.addEventListener( 'DOMContentLoaded', function() {
       const cellMessage = aHead.cloneNode();
       cellMessage.textContent = 'Bericht';
       row.append(cellMessage);
-      table.append(row);
+      table.append(row);//}}}
 
-      // Data rows
+      // Data rows {{{3
       const rows = Object.entries(teamsObj).forEach( ([id, value]) => {
+        const generalID = getGeneralId(value.channels);
 	// Start row
         const row = aRow.cloneNode();
 	// Naam
@@ -86,19 +98,33 @@ document.addEventListener( 'DOMContentLoaded', function() {
 	const checkbox = document.createElement('input');
 	checkbox.setAttribute('type', 'checkbox');
 	checkbox.setAttribute('id', id);
-	checkbox.setAttribute('name', id);
+	checkbox.setAttribute('name', generalID);
 	cellMessage.append(checkbox);
 	row.append(cellMessage);
 	// End row
 	table.append(row);
-      });
+      }); //}}}
       list.textContent = ``;
       list.append(table);
-    })
+    })//}}}
     .catch(function(err){
       console.log('error');
       console.warn('Some error: ', err);
     });
+  }//}}}
+
+  function getGeneralId(channels){
+      //const rows = Object.entries(teamsObj).forEach( ([id, value]) => {
+    let generalChannel = '';
+    const channel = Object.entries(channels).forEach( ([id, value] ) => {
+      console.log(`Id: ${id}`);
+      if (channels[id].displayName == 'General'){
+        generalChannel = id;
+      };
+    });
+    return generalChannel;
   }
 
-}, false);
+}, false);//}}
+
+
