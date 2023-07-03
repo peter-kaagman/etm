@@ -149,8 +149,8 @@ sub validateLogin {
   }
 
   if (
-       ('etm' ~~ $session_data->{$provider}{login_info}{roles}) &&
-       ('Medewerkers' ~~ $session_data->{$provider}{login_info}{roles})
+       ( grep (/^etm$/, @{$session_data->{$provider}{login_info}{roles}}) ) &&
+       ( grep (/^Medewerkers$/, @{$session_data->{$provider}{login_info}{roles}}) )
      ){
     say "role etm en Medewerkers";
     return 42;
