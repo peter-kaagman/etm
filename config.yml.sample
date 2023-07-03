@@ -16,6 +16,7 @@ layout: "main"
 # about unicode within your app when this setting is set (recommended).
 charset: "UTF-8"
 
+session: "YAML"
 # === Engines ===
 #
 # NOTE: All the engine configurations need to be under a single "engines:"
@@ -27,15 +28,15 @@ charset: "UTF-8"
 # simple: default and very basic template engine
 # template_toolkit: TT
 
-template: "simple"
+#template: "simple"
 
- template: "template_toolkit"
- engines:
-   template:
-     template_toolkit:
-       # Note: start_tag and end_tag are regexes
-       start_tag: '<%'
-       end_tag:   '%>'
+template: "template_toolkit"
+engines:
+  template:
+    template_toolkit:
+      # Note: start_tag and end_tag are regexes
+      start_tag: '<%'
+      end_tag:   '%>'
 
 # session engine
 #
@@ -54,19 +55,29 @@ template: "simple"
 #    Simple:
 #      cookie_name: testapp.session
 #
+
+
+
 #engines:
-#  session:
-#    YAML:
-#      cookie_name: eshop.session
-#      is_secure: 1
-#      is_http_only: 1
+  session:
+    YAML:
+      cookie_name: etm.session
+      is_secure: 1
+      is_http_only: 1
+
 plugins:
   "Auth::OAuth":
     providers:
       AzureAD:
+        urls:
+          authorize_url: "https://login.microsoftonline.com/<tennant_id>/oauth2/authorize"
+          access_token_url: "https://login.microsoftonline.com/<tennant_id>/oauth2/token"
         tokens:
-          client_id: YOUR_APP_ID
-          client_secret: YOUR_CLIENT_SECRET
+          client_id: <client_id>
+          client_secret: <client_secret>
         query_params:
           authorize:
-            scope: 'User.Read TeamSetting.Read.All'
+            scope: 'User.Read TeamSetting.Read.All ChannelSettings.ReadWrite.All'
+
+
+
