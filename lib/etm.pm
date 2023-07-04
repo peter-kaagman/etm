@@ -6,6 +6,7 @@ use Data::Dumper;
 use LWP::UserAgent;
 use JSON;
 use JSON::Create 'create_json';
+use URI::Encode qw(uri_encode);
 our $VERSION = '0.1';
 
 get '/' => sub { # {{{1
@@ -24,9 +25,7 @@ get '/' => sub { # {{{1
 };# }}}
 get '/about' => sub { # {{{1
   my $sessionData = session->read('oauth');
-  #my $teams = getJoinedTeams($$sessionData{azuread}{access_token});
   my $teams = session->read('teams');
-  print "/n/nAbout/n/n";
   template 'about' => { 'title' => 'ETM About',
 	                'sessionData' => $sessionData, 
 			};
@@ -44,22 +43,36 @@ get '/teamdetail/:team_id' => sub { # {{{1
   }
 };# }}}
 post '/api/sendmessage' => sub { # {{{1
+  my %reply;
   if (validLogin()){
     say "Send message";
-    my $session_data = session->read('oauth');
-    my $provider = 'azuread';
     my $body = decode_json request->body;
-    my $channelId = $body->{id};
-    my $generalId = $body->{generalid};
-    my $url= "https//graph.microsoft.com/v.1.0/teams$channelId/channels$generalId/messages";
+    my $teamId = $body->{id};
+    my $generalId = uri_encode($body->{generalid}, {encode_reserved => 1});
+    say $generalId;
+    my $url= "https://graph.microsoft.com/v1.0/teams/$teamId/channels/$generalId/messages";
+    say $url;
     # Bereid een JSON object voor met content
-    my %content;
-    $content{body}{content} = $body->{message};
-    #print Dumper \%content;
-    my $content_json = encode_json \%content;
-    #print Dumper $content_json;
-    _callAPI($session_data->{$provider}{access_token},$url,'POST',$content_json);
+    my $content= createCard($body->{message},$teamId);
+    my $result = _callAPI($url,'POST',$content);
+    if ($result->is_success){
+      say "Success";
+      print Dumper $result;
+      $reply{rc} = $result->{_rc};
+    }else{
+      say "Faillure";
+      print Dumper $result;
+      $reply{rc} = $result->{_rc};
+      $reply{msg} = $result->{_msg};
+      $reply{status_line} = $result->status_line;
+      #die $result->status_line;
+    }
+  }else{
+    $reply{rc} = '401';
+    $reply{msg} = 'unauthorized';
+    $reply{status_line} = 'Not the correct authorization.';
   }
+  send_as JSON => \%reply;
 }; #}}}
 get '/api/reloadteams' => sub { # {{{1
   if (validLogin()){
@@ -70,10 +83,10 @@ get '/api/reloadteams' => sub { # {{{1
   }
 }; #}}}
 sub getJoinedTeams { # {{{1
-  my $token = shift;
   my @teams;
-  my $url = "https://graph.microsoft.com/v1.0/me/joinedTeams";
-  _doGetItems($token, $url, \@teams);
+  #my $url = 'https://graph.microsoft.com/v1.0/me/joinedTeamsi?$select=id,displayName,description';
+  my $url = 'https://graph.microsoft.com/v1.0/me/joinedTeams?$select=id,displayName,description';
+  _doGetItems($url, \@teams);
   #print Dumper \@teams;
   #return \@teams;
   my %teamsData;
@@ -84,7 +97,7 @@ sub getJoinedTeams { # {{{1
 	# Team staat in de hash, mooi moment om aanvullende
 	# gegevens over het team te zoeken
 	my @channels;
-	getTeamChannels($token, $$team{id},\@channels);
+	getTeamChannels($team->{id},\@channels);
 	foreach my $channel (@channels){
 	  $teamsData{teams}{$$team{id}}{channels}{$$channel{id}}{displayName} = $$channel{displayName};
 	  $teamsData{teams}{$$team{id}}{channels}{$$channel{id}}{description} = $$channel{description};
@@ -93,30 +106,26 @@ sub getJoinedTeams { # {{{1
   session->write(%teamsData);
 }# }}}
 sub getTeamChannels { #{{{1
-  my $token = shift;
   my $teamID = shift;
   my $channels = shift;
   say "Getting channels for ID $teamID";
   my $url = "https://graph.microsoft.com/v1.0/teams/$teamID/channels";
-  _doGetItems($token, $url, $channels);
+  _doGetItems($url, $channels);
 }#}}}
 # _doGetItem: Recursive functions to get items from graph {{{1
 sub _doGetItems {
-	my $token = shift;
 	my $url = shift;
 	my $items = shift;
-	my $result = _callAPI($token,$url, 'GET');
+	my $result = _callAPI($url, 'GET');
 	if ($result->is_success){
 		my $reply =  decode_json($result->decoded_content);
-		while (my ($i, $el) = each @{$$reply{'value'}}) {
+		while (my ($i, $el) = each @{$reply->{'value'}}) {
 			push @{$items}, $el;
 		}
 		if ($$reply{'@odata.nextLink'}){
-			_doGetItems($token,$$reply{'@odata.nextLink'}, $items);
+			_doGetItems($reply->{'@odata.nextLink'}, $items);
 		}
-		#print Dumper $$reply{'value'};
 	}else{
-	#	print Dumper $result;
 		die $result->status_line;
 	}
 } #}}}
@@ -128,9 +137,9 @@ sub loadTeams { #{{{1
     # en geen teams
     if ( 
          (!defined $teams_data) &&
-	 (defined $session_data->{$provider}{id_token})
+	 (defined $session_data->{$provider}{access_token})
 	){
-  		getJoinedTeams($$session_data{azuread}{access_token});
+  		getJoinedTeams();
      }
 }#}}}
 # sub validLogin() {{{1
@@ -182,19 +191,21 @@ sub validLogin {
   return $result;
 }#}}}
 sub _callAPI {# {{{1
-	my $token = shift;
 	my $url = shift;
-	my $verb = shift;
+	my $method = shift;
 	my $content = shift || undef;
+        my $session_data = session->read('oauth');
+        my $provider = 'azuread';
+        my $token = $session_data->{$provider}{access_token};
 	my $ua = LWP::UserAgent->new(
 		'send_te' => '0',
 	);
 	my $req = HTTP::Request->new();
-	$req->method($verb);
+	$req->method($method);
 	$req->uri($url);
 	$req->header('Accept'        => '*/*',            );
 	$req->header('Authorization' => "Bearer $token", );
-	$req->header('User-Agent'    => 'curl/7.55.1',    );
+	$req->header('User-Agent'    => 'Perl/LWP',    );
 	$req->header('Content-Type'  => 'application/json');
 	if (defined $content){
 	  say "in content";
@@ -202,8 +213,23 @@ sub _callAPI {# {{{1
 	  print Dumper $req;
 	}
 	my $result = $ua->request($req);
-	#print Dumper $result;
 	return $result;
 } # }}}
-
+sub createCard{
+  my $msg = shift;
+  my $team = shift;
+  my %card;
+  $card{body}{content} = "Bericht voor team :<br>";
+  $card{body}{content} .= $msg;
+  $card{body}{contentType} = 'html';
+#  $card{mentions}[0]{id} = '0';
+#  $card{mentions}[0]{mentionText} = 'Hallo team';
+#  $card{mentions}[0]{mentioned}{user}{displayName} = 'Hallo team';
+#  $card{mentions}[0]{mentioned}{user}{id} = $team;
+#  $card{mentions}[0]{mentioned}{user}{userIdentityType} = 'aadGroup';
+  my $reply = encode_json \%card;
+  print Dumper $reply;
+  return $reply;
+ 
+}
 42;

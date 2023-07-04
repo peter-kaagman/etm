@@ -54,10 +54,29 @@ document.addEventListener( 'DOMContentLoaded', function() {
   function loadTeams(){//{{{1
     console.log('loadTeams');
     fetch('/api/reloadteams')
-    .then(function(response){
+    .then((response) => { //{{{2
+      // Do something with the response
+      console.log(typeof(response));
       return response.json();
-    })
-    .then(function(teamsObj){//{{{2
+    }) // then(response) }}}
+    /*
+    .then((unsorted) => { //{{{2
+      // Do something with the response
+      function compare(a,b){
+        if (a.displayName < b.displayName){
+	  return -1;
+	}
+        if (a.displayName > b.displayName){
+	  return 1;
+	}
+	return 0;
+      }
+      return Object(unsorted).sort(compare);
+    }) // then(unsorted) }}}
+    */
+    .then((teamsObj) => {//{{{2
+      // Do something with teamsObj
+      console.log(typeof(teamsObj));
       const list = document.querySelector('#teamList');
       const table = document.createElement(`table`);
       const aRow = document.createElement(`tr`);
@@ -76,48 +95,48 @@ document.addEventListener( 'DOMContentLoaded', function() {
       cellMessage.textContent = 'Bericht';
       row.append(cellMessage);
       table.append(row);//}}}
-
       // Data rows {{{3
-      const rows = Object.entries(teamsObj).forEach( ([id, value]) => {
+      const rows = Object.entries(teamsObj).forEach(([id, value]) => {
         const generalID = getGeneralId(value.channels);
-	// Start row
+        // Start row
         const row = aRow.cloneNode();
-	// Naam
+        // Naam
         const cellNaam = aCell.cloneNode();
-	const anchor = document.createElement('a');
-	anchor.href = `/teamdetail/${id}`;
-	anchor.innerText = teamsObj[id].displayName;
-	cellNaam.append(anchor);
-	row.append(cellNaam);
-	// Rol
+        const anchor = document.createElement('a');
+        anchor.href = `/teamdetail/${id}`;
+        anchor.innerText = teamsObj[id].displayName;
+        cellNaam.append(anchor);
+        row.append(cellNaam);
+        // Rol
         const cellRol = aCell.cloneNode();
-	cellRol.textContent = 'ntb'
-	row.append(cellRol);
-	// Bericht
+        cellRol.textContent = 'ntb'
+        row.append(cellRol);
+        // Bericht
         const cellMessage = aCell.cloneNode();
-	const checkbox = document.createElement('input');
-	checkbox.setAttribute('type', 'checkbox');
-	checkbox.setAttribute('id', id);
-	checkbox.setAttribute('name', generalID);
-	cellMessage.append(checkbox);
-	row.append(cellMessage);
-	// End row
-	table.append(row);
-      }); //}}}
+        const checkbox = document.createElement('input');
+        checkbox.setAttribute('type', 'checkbox');
+        checkbox.setAttribute('id', id);
+        checkbox.setAttribute('name', generalID);
+        cellMessage.append(checkbox);
+        row.append(cellMessage);
+        // End row
+        table.append(row);
+      }); // Data rows }}}
+      // Replace list content with new table
       list.textContent = ``;
       list.append(table);
-    })//}}}
-    .catch(function(err){
-      console.log('error');
+    })// then(teamsObj) }}}
+    .catch((err) => { //{{{2
       console.warn('Some error: ', err);
-    });
-  }//}}}
+    }); // catch(err) }}}
+  } // end loadTeams }}}
+
 
   function getGeneralId(channels){
       //const rows = Object.entries(teamsObj).forEach( ([id, value]) => {
     let generalChannel = '';
     const channel = Object.entries(channels).forEach( ([id, value] ) => {
-      console.log(`Id: ${id}`);
+      //console.log(`Id: ${id}`);
       if (channels[id].displayName == 'General'){
         generalChannel = id;
       };
