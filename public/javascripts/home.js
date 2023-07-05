@@ -109,7 +109,7 @@ document.addEventListener( 'DOMContentLoaded', function() {
         row.append(cellNaam);
         // Rol
         const cellRol = aCell.cloneNode();
-        cellRol.textContent = 'ntb'
+        cellRol.textContent = teamsObj[id].role;
         row.append(cellRol);
         // Bericht
         const cellMessage = aCell.cloneNode();

@@ -9,6 +9,8 @@ use JSON::Create 'create_json';
 use URI::Encode qw(uri_encode);
 our $VERSION = '0.1';
 
+my $appCnf = setting('AppSetting');
+
 get '/' => sub { # {{{1
   if (validLogin()){
     say "Valid login";
@@ -50,7 +52,7 @@ post '/api/sendmessage' => sub { # {{{1
     my $teamId = $body->{id};
     my $generalId = uri_encode($body->{generalid}, {encode_reserved => 1});
     say $generalId;
-    my $url= "https://graph.microsoft.com/v1.0/teams/$teamId/channels/$generalId/messages";
+    my $url= "$appCnf->{GraphEnpoint}/teams/$teamId/channels/$generalId/messages";
     say $url;
     # Bereid een JSON object voor met content
     my $content= createCard($body->{message},$teamId);
@@ -84,32 +86,53 @@ get '/api/reloadteams' => sub { # {{{1
 }; #}}}
 sub getJoinedTeams { # {{{1
   my @teams;
-  #my $url = 'https://graph.microsoft.com/v1.0/me/joinedTeamsi?$select=id,displayName,description';
-  my $url = 'https://graph.microsoft.com/v1.0/me/joinedTeams?$select=id,displayName,description';
+  my $url = $appCnf->{GraphEndpoint} . '/me/joinedTeams?$select=id,displayName,description';
   _doGetItems($url, \@teams);
   #print Dumper \@teams;
   #return \@teams;
   my %teamsData;
   foreach my $team (@teams){
-	$teamsData{teams}{$$team{id}}{displayName} = $$team{displayName};
-	$teamsData{teams}{$$team{id}}{description} = $$team{description};
+	say "==================================";
+	say "Processing team $team->{displayName}";
+	$teamsData{teams}{$team->{id}}{displayName} = $team->{displayName};
+	$teamsData{teams}{$team->{id}}{description} = $team->{description};
 
 	# Team staat in de hash, mooi moment om aanvullende
 	# gegevens over het team te zoeken
+	# Ben ik eigenaar?
+        say "Getting owner for ID $team->{id}";
+	$teamsData{teams}{$team->{id}}{role} = getMyTeamRole($team->{id});
+	#
+	# Welke channels zijn er?
+        say "Getting channels for ID $team->{id}";
 	my @channels;
 	getTeamChannels($team->{id},\@channels);
 	foreach my $channel (@channels){
-	  $teamsData{teams}{$$team{id}}{channels}{$$channel{id}}{displayName} = $$channel{displayName};
-	  $teamsData{teams}{$$team{id}}{channels}{$$channel{id}}{description} = $$channel{description};
+	  $teamsData{teams}{$team->{id}}{channels}{$channel->{id}}{displayName} = $channel->{displayName};
+	  $teamsData{teams}{$team->{id}}{channels}{$channel->{id}}{description} = $channel->{description};
 	}
   }
   session->write(%teamsData);
 }# }}}
+sub getMyTeamRole { #{{{1
+  my $teamId = shift;
+  my $role = "member";
+  my $url = "$appCnf->{GraphEndpoint}/groups/$teamId/owners?\$select=displayName";
+  my $result = _callAPI($url,'GET');
+  if ($result->is_success){
+    say "Halleluyah";
+    my $reply =  decode_json($result->decoded_content);
+    print Dumper $reply;
+  }else{
+    print Dumper $result;
+    die $result->status_line;
+  }
+  return $role;
+} # }}}
 sub getTeamChannels { #{{{1
-  my $teamID = shift;
+  my $teamId = shift;
   my $channels = shift;
-  say "Getting channels for ID $teamID";
-  my $url = "https://graph.microsoft.com/v1.0/teams/$teamID/channels";
+  my $url = "$appCnf->{GraphEndpoint}/teams/$teamId/channels?\$select=id,displayName,description";
   _doGetItems($url, $channels);
 }#}}}
 # _doGetItem: Recursive functions to get items from graph {{{1
@@ -126,7 +149,8 @@ sub _doGetItems {
 			_doGetItems($reply->{'@odata.nextLink'}, $items);
 		}
 	}else{
-		die $result->status_line;
+		print Dumper $result;
+		die $result->status_line
 	}
 } #}}}
 sub loadTeams { #{{{1
