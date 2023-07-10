@@ -5,8 +5,9 @@ use Dancer2::Plugin::Auth::OAuth;
 use Data::Dumper;
 use LWP::UserAgent;
 use JSON;
-use JSON::Create 'create_json';
+#use JSON::Create 'create_json';
 use URI::Encode qw(uri_encode);
+use Data::GUID;
 our $VERSION = '0.1';
 
 my $appCnf = setting('AppSetting');
@@ -44,18 +45,21 @@ get '/teamdetail/:team_id' => sub { # {{{1
     redirect '/about';
   }
 };# }}}
-post '/api/sendmessage' => sub { # {{{1
+# /api/sendmessage {{{1
+# Route om een bericht te sturen aan een team/channel
+post '/api/sendmessage' => sub {
   my %reply;
   if (validLogin()){
     say "Send message";
     my $body = decode_json request->body;
-    my $teamId = $body->{id};
-    my $generalId = uri_encode($body->{generalid}, {encode_reserved => 1});
-    say $generalId;
-    my $url= "$appCnf->{GraphEnpoint}/teams/$teamId/channels/$generalId/messages";
-    say $url;
+    my $url= $appCnf->{GraphEndpoint} . 
+             '/teams/'.
+	     $body->{id} .
+	     '/channels/' .
+	     uri_encode($body->{generalid}, {encode_reserved => 1}) .
+	     '/messages';
     # Bereid een JSON object voor met content
-    my $content= createCard($body->{message},$teamId);
+    my $content= createCard($body->{message},$body->{generalid});
     my $result = _callAPI($url,'POST',$content);
     if ($result->is_success){
       say "Success";
@@ -76,15 +80,31 @@ post '/api/sendmessage' => sub { # {{{1
   }
   send_as JSON => \%reply;
 }; #}}}
-get '/api/reloadteams' => sub { # {{{1
+# /api/reloadTeams {{{1
+# Route om het herladen van de teams info te forceren
+# Dit wordt gedaan door de teams uit de sessie te verwijderen
+# en vervolgens opnieuw te laden.
+# Wordt door JS aangeroepen nadat de DOM geladen is
+# en als de gebruiker erom vraag.
+get '/api/reloadteams' => sub {
   if (validLogin()){
+    #
+    # Graph geeft af en toe een 401 unauthorized, rete irritant
+    # workaround is vlgs zeggen een call naar een sharepoint api
+    #&callSharepoint;
     session->delete('teams');
     loadTeams();
     my $teams_data = session->read('teams');
     send_as JSON => $teams_data;
   }
 }; #}}}
-sub getJoinedTeams { # {{{1
+# getJoinedTeams {{{1
+# Zoekt de teams waar de gebruiker lid van is
+# Vervolgens wordt er per team gekeken naar
+# - is de gebruiker eigenaar
+# - welke channels heeft het team
+# Deze gevevens worden opgeslagen in de session
+sub getJoinedTeams {
   my @teams;
   my $url = $appCnf->{GraphEndpoint} . '/me/joinedTeams?$select=id,displayName,description';
   _doGetItems($url, \@teams);
@@ -92,19 +112,15 @@ sub getJoinedTeams { # {{{1
   #return \@teams;
   my %teamsData;
   foreach my $team (@teams){
-	say "==================================";
-	say "Processing team $team->{displayName}";
 	$teamsData{teams}{$team->{id}}{displayName} = $team->{displayName};
 	$teamsData{teams}{$team->{id}}{description} = $team->{description};
 
 	# Team staat in de hash, mooi moment om aanvullende
 	# gegevens over het team te zoeken
 	# Ben ik eigenaar?
-        say "Getting owner for ID $team->{id}";
 	$teamsData{teams}{$team->{id}}{role} = getMyTeamRole($team->{id});
 	#
 	# Welke channels zijn er?
-        say "Getting channels for ID $team->{id}";
 	my @channels;
 	getTeamChannels($team->{id},\@channels);
 	foreach my $channel (@channels){
@@ -114,28 +130,36 @@ sub getJoinedTeams { # {{{1
   }
   session->write(%teamsData);
 }# }}}
-sub getMyTeamRole { #{{{1
+# getMyTeamRole {{{1
+# Bereid de request voor om te zien of de gebruiker eigenaar is van een team
+sub getMyTeamRole {
   my $teamId = shift;
   my $role = "member";
   my $url = "$appCnf->{GraphEndpoint}/groups/$teamId/owners?\$select=displayName";
   my $result = _callAPI($url,'GET');
   if ($result->is_success){
-    say "Halleluyah";
     my $reply =  decode_json($result->decoded_content);
-    print Dumper $reply;
+    #print Dumper $reply;
   }else{
     print Dumper $result;
     die $result->status_line;
   }
   return $role;
 } # }}}
-sub getTeamChannels { #{{{1
+# getTeamChannels {{{1
+# Bereid het ophalen voor van het ophalen van channels voor een bepaald tema
+# doGetItems doet het uiteindelijke werk.
+# Gevonden channels komen in de $channels reference
+sub getTeamChannels { 
   my $teamId = shift;
   my $channels = shift;
   my $url = "$appCnf->{GraphEndpoint}/teams/$teamId/channels?\$select=id,displayName,description";
   _doGetItems($url, $channels);
 }#}}}
-# _doGetItem: Recursive functions to get items from graph {{{1
+# _doGetItem {{{1 
+# Generieke recursive function om items te laden bij graph
+# Indien er een nextLink is roept hij zichzelf aan.
+# Geeft de items terug via de $items reference
 sub _doGetItems {
 	my $url = shift;
 	my $items = shift;
@@ -153,12 +177,13 @@ sub _doGetItems {
 		die $result->status_line
 	}
 } #}}}
-sub loadTeams { #{{{1
+# loadTeams {{{1
+# Laad teamsdata als er een oauth sessie is
+# en geen teams
+sub loadTeams { 
     my $teams_data = session->read('teams');
     my $session_data = session->read('oauth');
     my $provider = 'azuread';
-    # Laad teamsdata als er een oauth sessie is
-    # en geen teams
     if ( 
          (!defined $teams_data) &&
 	 (defined $session_data->{$provider}{access_token})
@@ -166,7 +191,7 @@ sub loadTeams { #{{{1
   		getJoinedTeams();
      }
 }#}}}
-# sub validLogin() {{{1
+# validLogin() {{{1
 # Controleert:
 # - of er een sessie
 # - of de sessie ververst moet worden
@@ -214,7 +239,9 @@ sub validLogin {
   }
   return $result;
 }#}}}
-sub _callAPI {# {{{1
+#  _callAPI {{{1
+# Generieke functie om een request te sturen
+sub _callAPI {
 	my $url = shift;
 	my $method = shift;
 	my $content = shift || undef;
@@ -232,28 +259,72 @@ sub _callAPI {# {{{1
 	$req->header('User-Agent'    => 'Perl/LWP',    );
 	$req->header('Content-Type'  => 'application/json');
 	if (defined $content){
-	  say "in content";
+	  say "====== content";
+	  say $content;
 	  $req->content($content);
+	  $req->content_length(length($content));
+	  say "=====request";
 	  print Dumper $req;
 	}
 	my $result = $ua->request($req);
 	return $result;
 } # }}}
+# createCard {{{1
+# Maakt een messagecard evt met icon en highlight
 sub createCard{
   my $msg = shift;
-  my $team = shift;
-  my %card;
-  $card{body}{content} = "Bericht voor team :<br>";
-  $card{body}{content} .= $msg;
-  $card{body}{contentType} = 'html';
-#  $card{mentions}[0]{id} = '0';
-#  $card{mentions}[0]{mentionText} = 'Hallo team';
-#  $card{mentions}[0]{mentioned}{user}{displayName} = 'Hallo team';
-#  $card{mentions}[0]{mentioned}{user}{id} = $team;
-#  $card{mentions}[0]{mentioned}{user}{userIdentityType} = 'aadGroup';
+  my $channel = shift;
+  
+  my %payload = (
+	  type => "AdaptiveCard",
+	  version => "1.0",
+	  body => [ 
+	    {
+	      type => "TextBlock",
+	      text =>  "Here is a ninja cat", 
+	    }, 
+	    {
+	      type => "Image",
+	      url => "http://adaptivecatds.io/content/cats/1.png" 
+	    }, 
+	  ],
+  );
+  my $content = encode_json \%payload;
+  say "===payload";
+  say $content;
+
+  my $id = Data::GUID->new;
+  say "my GUID $id";
+  
+  my %card = ( 
+    body => { 
+      contentType => "html", 
+      content => "<attachment id=\"$id\"></attachment>" 
+    }, 
+    attachments => [ 
+      { 
+        id => "$id", 
+	content_type => "application/vnd.microsoft.card.adaptive", 
+	content => $content,
+      }
+    ]
+  );
+  say "card als hash";
+  print Dumper %card;
   my $reply = encode_json \%card;
-  print Dumper $reply;
+  say "card als json";
+  say $reply;
   return $reply;
  
-}
+}#}}}
+# callSharepoint {{{1
+# Een poging om van de 401 fouten bij graph af te komen
+# request mislukt maar zou evengoed effect kunnen hebbeb.
+sub callSharepoint {
+  my $hostPath = 'https://atlascollegehoorn.sharepoint.com';
+  my $resource = 'AC-MijnAtlas';
+  my $url = "$hostPath/sites/$resource/_api/search/query?querytext=\'contentclass:STS_Site\'&selectproperties=\'Path\'&refinementfilters=\'SPSiteUrl:(\"{$hostPath}/sites/*\")\'";
+  say "callSharepoint";
+  _callAPI($url,'GET');
+}#}}}
 42;
